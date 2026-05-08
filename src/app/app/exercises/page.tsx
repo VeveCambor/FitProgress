@@ -1,7 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { createExercise } from "./actions";
 
-export default async function ExercisesPage() {
+import { DeleteExerciseButton } from "./delete-exercise-button";
+import { ExerciseEditor } from "./exercise-editor";
+
+export default async function ExercisesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error: errorParam } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,6 +30,12 @@ export default async function ExercisesPage() {
           Přidej si vlastní cviky (např. “Dřep”, “Bench press”). Později na tom
           postavíme zápis tréninku a grafy progresu.
         </p>
+
+        {errorParam ? (
+          <div className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            {errorParam}
+          </div>
+        ) : null}
 
         <form action={createExercise} className="mt-6 space-y-3">
           <div className="space-y-2">
@@ -93,12 +107,22 @@ export default async function ExercisesPage() {
 
         <div className="mt-4 divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10">
           {(exercises ?? []).map((ex) => (
-            <div key={ex.id} className="flex items-center justify-between p-3">
-              <div>
+            <div
+              key={ex.id}
+              className="flex items-center justify-between gap-3 p-3"
+            >
+              <div className="min-w-0 flex-1">
                 <div className="font-medium">{ex.name}</div>
                 <div className="text-xs text-white/50">
                   {[ex.primary_muscle, ex.equipment].filter(Boolean).join(" • ")}
                 </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <ExerciseEditor exercise={ex} />
+                <DeleteExerciseButton
+                  exerciseId={ex.id}
+                  exerciseName={ex.name}
+                />
               </div>
             </div>
           ))}

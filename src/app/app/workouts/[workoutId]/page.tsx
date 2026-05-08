@@ -3,7 +3,9 @@ import Link from "next/link";
 import { IconTrash } from "@/components/workout-icons";
 import { createClient } from "@/lib/supabase/server";
 import {
+  addCardioLog,
   addSet,
+  deleteCardioLog,
   deleteExerciseSets,
   deleteWorkoutSetGroup,
 } from "../actions";
@@ -85,6 +87,53 @@ function formatRunLine(rep: WorkoutSetRow, count: number) {
   return bits.join(" · ");
 }
 
+type CardioRow = {
+  id: string;
+  kind: string;
+  distance_km: number | null;
+  duration_sec: number | null;
+  avg_speed_kmh: number | null;
+  notes: string | null;
+  created_at: string;
+};
+
+function cardioKindLabel(kind: string) {
+  switch (kind) {
+    case "walk":
+      return "Chůze";
+    case "run":
+      return "Běh";
+    case "bike":
+      return "Kolo";
+    default:
+      return kind;
+  }
+}
+
+function formatDurationHms(totalSec: number | null) {
+  if (totalSec == null || totalSec <= 0) return null;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatCardioLine(c: CardioRow) {
+  const parts: string[] = [];
+  if (c.distance_km != null && c.distance_km > 0) {
+    parts.push(`${c.distance_km} km`);
+  }
+  const t = formatDurationHms(c.duration_sec);
+  if (t) parts.push(t);
+  if (c.avg_speed_kmh != null && c.avg_speed_kmh > 0) {
+    parts.push(`${c.avg_speed_kmh} km/h`);
+  }
+  return parts.length ? parts.join(" · ") : "—";
+}
+
 export default async function WorkoutDetailPage({
   params,
 }: {
@@ -123,6 +172,18 @@ export default async function WorkoutDetailPage({
   const sets = (setsRaw ?? []) as WorkoutSetRow[];
   const exerciseGroups = groupSetsByExercise(sets);
   const exerciseMap = new Map((exercises ?? []).map((e) => [e.id, e.name]));
+
+  const { data: cardioRaw } = user
+    ? await supabase
+        .from("cardio_logs")
+        .select(
+          "id,kind,distance_km,duration_sec,avg_speed_kmh,notes,created_at"
+        )
+        .eq("workout_id", workoutId)
+        .order("created_at", { ascending: true })
+    : { data: null };
+
+  const cardioRows = (cardioRaw ?? []) as CardioRow[];
 
   if (!workout) {
     return (
@@ -287,13 +348,128 @@ export default async function WorkoutDetailPage({
             Přidat
           </button>
         </form>
+
+        <h2 className="mt-8 text-sm font-semibold text-white/80">
+          Kardio (chůze, běh, kolo)
+        </h2>
+        <p className="mt-1 text-xs text-white/50">
+          Zadej vzdálenost (km), čas (min + s) a případně průměrnou rychlost
+          (km/h). Ze dvou hodnot se třetí dopočítá, pokud chybí.
+        </p>
+
+        <form
+          action={addCardioLog.bind(null, workoutId)}
+          className="mt-3 space-y-3"
+        >
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80" htmlFor="kind">
+              Aktivita
+            </label>
+            <select
+              id="kind"
+              name="kind"
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+              defaultValue="run"
+            >
+              <option value="walk">Chůze</option>
+              <option value="run">Běh</option>
+              <option value="bike">Kolo</option>
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              className="text-sm font-medium text-white/80"
+              htmlFor="distance_km"
+            >
+              Vzdálenost (km)
+            </label>
+            <input
+              id="distance_km"
+              name="distance_km"
+              inputMode="decimal"
+              placeholder="např. 5,2"
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none placeholder:text-white/30 focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <label
+                className="text-sm font-medium text-white/80"
+                htmlFor="duration_min"
+              >
+                Čas – minuty
+              </label>
+              <input
+                id="duration_min"
+                name="duration_min"
+                inputMode="numeric"
+                placeholder="30"
+                className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none placeholder:text-white/30 focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="text-sm font-medium text-white/80"
+                htmlFor="duration_sec"
+              >
+                Čas – sekundy
+              </label>
+              <input
+                id="duration_sec"
+                name="duration_sec"
+                inputMode="numeric"
+                placeholder="0–59"
+                min={0}
+                max={59}
+                className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none placeholder:text-white/30 focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label
+              className="text-sm font-medium text-white/80"
+              htmlFor="avg_speed_kmh"
+            >
+              Prům. rychlost (km/h)
+            </label>
+            <input
+              id="avg_speed_kmh"
+              name="avg_speed_kmh"
+              inputMode="decimal"
+              placeholder="např. 10,5"
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none placeholder:text-white/30 focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80" htmlFor="cnotes">
+              Poznámka (volitelné)
+            </label>
+            <input
+              id="cnotes"
+              name="notes"
+              placeholder="terén, tep…"
+              className="h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 text-sm outline-none placeholder:text-white/30 focus:border-indigo-400/40 focus:ring-2 focus:ring-indigo-500/20"
+            />
+          </div>
+
+          <button
+            className="h-11 w-full rounded-xl border border-white/10 bg-black/30 text-sm font-semibold text-white/90 hover:bg-black/45"
+            type="submit"
+          >
+            Přidat kardio
+          </button>
+        </form>
       </section>
 
       <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-4">
           <h2 className="text-lg font-semibold">Cviky v tréninku</h2>
           <div className="text-xs text-white/50">
-            Cviky: {exerciseGroups.length} · Série celkem: {sets.length}
+            Cviky: {exerciseGroups.length}
           </div>
         </div>
 
@@ -387,6 +563,52 @@ export default async function WorkoutDetailPage({
           {sets.length === 0 ? (
             <div className="rounded-xl border border-white/10 p-6 text-sm text-white/60">
               Zatím tu nejsou žádné série.
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-8 border-t border-white/10 pt-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-4">
+            <h2 className="text-lg font-semibold">Kardio v tréninku</h2>
+            <div className="text-xs text-white/50">
+              Záznamů: {cardioRows.length}
+            </div>
+          </div>
+
+          <ul className="mt-4 space-y-2">
+            {cardioRows.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-white/90">
+                    {cardioKindLabel(c.kind)}
+                  </div>
+                  <div className="mt-0.5 text-sm text-white/70">
+                    {formatCardioLine(c)}
+                  </div>
+                  {c.notes ? (
+                    <div className="mt-1 text-xs text-white/45">{c.notes}</div>
+                  ) : null}
+                </div>
+                <form action={deleteCardioLog.bind(null, workoutId, c.id)}>
+                  <button
+                    type="submit"
+                    className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-white/10 bg-black/30 text-rose-300/90 hover:bg-rose-500/15 hover:text-rose-200"
+                    aria-label="Smazat kardio záznam"
+                    title="Smazat"
+                  >
+                    <IconTrash className="h-4 w-4" />
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+
+          {cardioRows.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-white/10 p-6 text-sm text-white/60">
+              Zatím žádné kardio. Přidej ho vlevo ve formuláři.
             </div>
           ) : null}
         </div>

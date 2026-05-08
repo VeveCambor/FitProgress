@@ -30,6 +30,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
             <Link
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+              href="/app/progress"
+            >
+              Progres
+            </Link>
+            <Link
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
               href="/app/exercises"
             >
               Cviky

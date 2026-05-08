@@ -214,3 +214,112 @@ export async function deleteWorkout(workoutId: string) {
   revalidatePath("/app/workouts");
 }
 
+function parseDecimal(raw: string): number | null {
+  const t = raw.trim().replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function roundN(n: number, decimals: number) {
+  const p = 10 ** decimals;
+  return Math.round(n * p) / p;
+}
+
+/** Z dvou známých hodnot dopočítá třetí: vzdálenost (km), čas (s), prům. rychlost (km/h). */
+function deriveCardioMetrics(input: {
+  distance_km: number | null;
+  duration_sec: number;
+  avg_speed_kmh: number | null;
+}) {
+  let { distance_km, duration_sec, avg_speed_kmh } = input;
+
+  if (duration_sec > 0 && distance_km != null && distance_km > 0) {
+    avg_speed_kmh = distance_km / (duration_sec / 3600);
+  } else if (
+    duration_sec > 0 &&
+    (distance_km == null || distance_km <= 0) &&
+    avg_speed_kmh != null &&
+    avg_speed_kmh > 0
+  ) {
+    distance_km = avg_speed_kmh * (duration_sec / 3600);
+  } else if (
+    (duration_sec <= 0) &&
+    distance_km != null &&
+    distance_km > 0 &&
+    avg_speed_kmh != null &&
+    avg_speed_kmh > 0
+  ) {
+    duration_sec = Math.round((distance_km / avg_speed_kmh) * 3600);
+  }
+
+  return { distance_km, duration_sec, avg_speed_kmh };
+}
+
+export async function addCardioLog(workoutId: string, formData: FormData) {
+  const kind = String(formData.get("kind") ?? "").trim();
+  if (kind !== "walk" && kind !== "run" && kind !== "bike") return;
+
+  let distance_km = parseDecimal(String(formData.get("distance_km") ?? ""));
+  const durMin = Math.max(
+    0,
+    Math.floor(Number(String(formData.get("duration_min") ?? "0")) || 0)
+  );
+  const durSecPart = Math.max(
+    0,
+    Math.min(59, Math.floor(Number(String(formData.get("duration_sec") ?? "0")) || 0))
+  );
+  let duration_sec = durMin * 60 + durSecPart;
+
+  let avg_speed_kmh = parseDecimal(String(formData.get("avg_speed_kmh") ?? ""));
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const derived = deriveCardioMetrics({
+    distance_km,
+    duration_sec,
+    avg_speed_kmh,
+  });
+  distance_km = derived.distance_km;
+  duration_sec = derived.duration_sec;
+  avg_speed_kmh = derived.avg_speed_kmh;
+
+  const hasSomething =
+    (distance_km != null && distance_km > 0) ||
+    duration_sec > 0 ||
+    (avg_speed_kmh != null && avg_speed_kmh > 0);
+  if (!hasSomething) return;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?next=/app/workouts/${workoutId}`);
+
+  await supabase.from("cardio_logs").insert({
+    user_id: user.id,
+    workout_id: workoutId,
+    kind,
+    distance_km:
+      distance_km != null && distance_km > 0 ? roundN(distance_km, 3) : null,
+    duration_sec: duration_sec > 0 ? duration_sec : null,
+    avg_speed_kmh:
+      avg_speed_kmh != null && avg_speed_kmh > 0
+        ? roundN(avg_speed_kmh, 2)
+        : null,
+    notes: notes || null,
+  });
+
+  revalidatePath(`/app/workouts/${workoutId}`);
+}
+
+export async function deleteCardioLog(workoutId: string, cardioId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?next=/app/workouts/${workoutId}`);
+
+  await supabase.from("cardio_logs").delete().eq("id", cardioId);
+  revalidatePath(`/app/workouts/${workoutId}`);
+}
+

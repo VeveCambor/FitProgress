@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 
 import { LoginForm } from "./ui";
 
@@ -16,7 +17,9 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <LoginForm />
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-white/5" />}>
+          <LoginForm />
+        </Suspense>
 
         <div className="mt-6 text-xs text-white/50">
           <Link className="underline hover:text-white/70" href="/">
