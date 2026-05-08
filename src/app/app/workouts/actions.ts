@@ -37,6 +37,43 @@ export async function createWorkout(formData: FormData) {
   redirect(`/app/workouts/${data.id}`);
 }
 
+export async function updateWorkout(workoutId: string, formData: FormData) {
+  const title = String(formData.get("title") ?? "").trim();
+  const performedAt = String(formData.get("performed_at") ?? "").trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect(`/login?next=/app/workouts/${workoutId}`);
+
+  const performed_at = performedAt
+    ? new Date(`${performedAt}T12:00:00.000Z`)
+    : new Date();
+
+  const { error } = await supabase
+    .from("workouts")
+    .update({
+      title: title || null,
+      notes: notes || null,
+      performed_at: performed_at.toISOString(),
+    })
+    .eq("id", workoutId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    redirect(
+      `/app/workouts/${workoutId}?error=${encodeURIComponent(error.message)}`
+    );
+  }
+
+  revalidatePath(`/app/workouts/${workoutId}`);
+  revalidatePath("/app/workouts");
+  revalidatePath("/app");
+  revalidatePath("/app/progress");
+}
+
 export async function addSet(workoutId: string, formData: FormData) {
   const exerciseId = String(formData.get("exercise_id") ?? "").trim();
   const setCountRaw = String(formData.get("set_count") ?? "1").trim();

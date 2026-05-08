@@ -12,6 +12,7 @@ import {
 
 import { DeleteWorkoutButton } from "./delete-workout-button";
 import { SetRunEditor } from "./set-run-editor";
+import { WorkoutMetaEditor } from "./workout-meta-editor";
 
 function formatDateTime(value: string) {
   const d = new Date(value);
@@ -136,10 +137,13 @@ function formatCardioLine(c: CardioRow) {
 
 export default async function WorkoutDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ workoutId: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { workoutId } = await params;
+  const { error: pageError } = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -210,6 +214,12 @@ export default async function WorkoutDetailPage({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <WorkoutMetaEditor
+              workoutId={workoutId}
+              title={workout.title}
+              performedAtIso={workout.performed_at}
+              notes={workout.notes}
+            />
             <Link
               className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/80 hover:bg-black/40"
               href="/app/workouts"
@@ -219,6 +229,12 @@ export default async function WorkoutDetailPage({
             <DeleteWorkoutButton workoutId={workoutId} />
           </div>
         </div>
+
+        {pageError ? (
+          <div className="mt-4 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+            {pageError}
+          </div>
+        ) : null}
 
         {workout.notes ? (
           <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/70">
